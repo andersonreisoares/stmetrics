@@ -90,7 +90,6 @@ def create_polygon(timeseries):
         return None
     
 
-
 def get_list_of_points(timeseries):
     """This function creates a list of angles based on the time series.
     This list is used for convert the time series to a polygon.
@@ -148,7 +147,7 @@ def file_to_da(filepath):
     # find datetime
     match = re.findall(r'\d{4}-\d{2}-\d{2}', filepath)[-1]
     
-    xda.coords['time'] = match
+    da.coords['time'] = match
 
     return da
 

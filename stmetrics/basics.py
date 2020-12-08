@@ -200,7 +200,7 @@ def abs_sum_ts(timeseries, nodata=-9999):
     :param nodata: nodata of the time series. Default is -9999.
     :type nodata: int
 
-    :returns: Sum of values of time series.
+    :returns: Sum of absolute values of time series.
     :rtype: numpy.float64
     """
 
@@ -247,8 +247,11 @@ def amd_ts(timeseries, nodata=-9999):
 
 
 def mse_ts(timeseries, nodata=-9999):
-    """mse - Mean Spectral Energy
-    It computes mean spectral energy of a time series.
+    """mse - Mean Spectral Energy Density
+    It computes mean spectral energy of a time series. 
+    Mean Energy spectral density computesthe energy of the time series that \
+    is distributed with frequency. High frequencies time series usually \
+    have lower spectral energy.
 
     :param timeseries: Your time series.
     :type timeseries: numpy.ndarray
@@ -258,9 +261,6 @@ def mse_ts(timeseries, nodata=-9999):
 
     :returns: The absolute mean derivative of time series.
     :rtype: numpy.float64
-
-    .. Important::
-        This function was adapted from sglearn package.
     """
 
     ts = utils.fixseries(timeseries, nodata)
@@ -269,8 +269,8 @@ def mse_ts(timeseries, nodata=-9999):
 
 
 def fqr_ts(timeseries, nodata=-9999):
-    """fqr - Mean Spectral Energy
-    It computes the first quartileof a time series.
+    """fqr - First Quartile
+    It computes the first quartile of a time series.
 
     :param timeseries: Your time series.
     :type timeseries: numpy.ndarray
@@ -288,7 +288,7 @@ def fqr_ts(timeseries, nodata=-9999):
 
 
 def tqr_ts(timeseries, nodata=-9999):
-    """tqr - First quartile
+    """tqr - Third quartile
     It computes the third quartileof a time series.
 
     :param timeseries: Your time series.
@@ -307,8 +307,8 @@ def tqr_ts(timeseries, nodata=-9999):
 
 
 def sqr_ts(timeseries, nodata=-9999):
-    """sqr - Interquaritle range (IQR)
-    It computes the interquaritle range of the time series.
+    """sqr - Second quartile
+    It computes the second quartile the time series.
 
     :param timeseries: Your time series.
     :type timeseries: numpy.ndarray
