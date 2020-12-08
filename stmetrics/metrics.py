@@ -5,8 +5,7 @@ METRICS_DICT = {
                 "polar": ["all"],
                 "fractal": ["all"]}
 
-def get_metrics(series, metrics_dict=METRICS_DICT,
-                                      nodata=-9999, show=False):
+def get_metrics(series, metrics_dict=METRICS_DICT, nodata=-9999, show=False):
     """This function perform the computation and plot of the \
     spectral-polar-fractal metrics available in the stmetrics package.
 
@@ -59,7 +58,7 @@ def _getmetrics(timeseries, metrics):
     return metricas
 
 
-def sits2metrics(dataset, metrics = METRICS_DICT, num_cores=-1):
+def sits2metrics(dataset, metrics=METRICS_DICT, num_cores=-1):
     """This function performs the computation of the metrics using \
     multiprocessing.
 
@@ -67,7 +66,7 @@ def sits2metrics(dataset, metrics = METRICS_DICT, num_cores=-1):
     :type dataset: rasterio dataset, numpy array (ZxMxN) - Z \
     is the time series lenght or xarray.Dataset
 
-    :param metrics: dictionary with metrics list
+    :param metrics: Dictionary with metrics list.
     :type metrics: dictionary
  
     :param num_cores: Number of cores to be used. \
@@ -75,7 +74,8 @@ def sits2metrics(dataset, metrics = METRICS_DICT, num_cores=-1):
     :type num_cores: integer \
 
     :returns image: Numpy matrix of metrics or xarray.Dataset \
-    with the metrics as an dataset.
+    with the metrics as an dataset. The orders of the dimensions, \
+    follows the dictionary provided.
     """
     import rasterio
     import xarray

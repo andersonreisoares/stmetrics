@@ -1,10 +1,7 @@
 import numpy
 import warnings
-from shapely import geometry
-from shapely.geometry.polygon import LinearRing
-from shapely.geometry import MultiPolygon, Polygon, mapping, shape
+from numba import jit
 warnings.filterwarnings("ignore")
-
 
 def fixseries(time_series, nodata=-9999):
     """This function fix the time series.
@@ -21,10 +18,8 @@ def fixseries(time_series, nodata=-9999):
 
     :return fixed_timeseries: Numpy array of time series without spikes.
     """
-    check_input(time_series)
-
     # Remove nodata on non masked arrays
-    if any(time_series[time_series == nodata]):
+    if time_series[time_series == nodata].any():
         time_series[time_series == nodata] = numpy.nan
     
     time_series = time_series[~numpy.isnan(time_series)]
@@ -58,6 +53,11 @@ def create_polygon(timeseries):
 
     :return polygon: Shapely polygon of time series without spikes.
     """
+    from shapely.geometry import Polygon
+    from shapely.geometry.polygon import LinearRing
+
+    check_input(time_series)
+
     # remove weird spikes on timeseries
     try:
         ts = fixseries(timeseries)
@@ -88,7 +88,7 @@ def create_polygon(timeseries):
     except:
         print("Unable to create a valid polygon")
         return None
-    
+
 
 def get_list_of_points(timeseries):
     """This function creates a list of angles based on the time series.
@@ -105,7 +105,7 @@ def get_list_of_points(timeseries):
     transformation.
     """
 
-    list_of_observations = abs(timeseries)
+    list_of_observations = numpy.abs(timeseries)
 
     list_of_angles = numpy.linspace(0, 2 * numpy.pi, len(list_of_observations))
 
@@ -124,9 +124,9 @@ def check_input(timeseries):
     if isinstance(timeseries, numpy.ndarray):
         if len(timeseries) < 5:
             raise TypeError("Your time series is too short!")
-        elif all(numpy.isnan(timeseries)):
+        elif  numpy.isnan(timeseries).all():
             raise Exception("Your time series has only nans!")
-        elif all(timeseries == 0):
+        elif (timeseries == 0).all():
             raise Exception("Your time series has only zeros!")
         else:
             return timeseries
@@ -171,7 +171,7 @@ def img2xarray(path, band):
 
 
 def images2xarray(cube_path, list_bands):
-    """This function read a path with images and create a xarray dataset.
+    """This function read a path with BDC ARD data and create a xarray dataset.
 
     :param cube_path: Path of folder with images.
     :type cube_path: string
@@ -238,8 +238,8 @@ def error_fractal():
 
 
 def list_metrics():
-    '''This function list the available metrics in stmetrics.
-    '''
+    """This function list the available metrics in stmetrics.
+    """
     import stmetrics
     metrics = [*error_basics().keys(),
                *error_polar().keys(),
@@ -250,4 +250,4 @@ def list_metrics():
 
 def truncate(n, decimals=6):
     multiplier = 10 ** decimals
-    return int(n * multiplier) / multiplier
+    return (n * multiplier).astype(int) / multiplier
