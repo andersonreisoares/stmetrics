@@ -1,10 +1,11 @@
 import numpy
 
-def get_metrics(series, metrics_dict={
-                                      "basics": ["all"],
-                                      "polar": ["all"],
-                                      "fractal": ["all"]
-                                      },
+METRICS_DICT = {
+                "basics": ["all"],
+                "polar": ["all"],
+                "fractal": ["all"]}
+
+def get_metrics(series, metrics_dict=METRICS_DICT,
                                       nodata=-9999, show=False):
     """This function perform the computation and plot of the \
     spectral-polar-fractal metrics available in the stmetrics package.
@@ -37,32 +38,41 @@ def get_metrics(series, metrics_dict={
     return time_metrics
 
 
-def _getmetrics(timeseries):
-
-    metrics = {
-        "basics": ["all"],
-        "polar": ["all"],
-        "fractal": ["all"]
-        }
-
+def _getmetrics(timeseries, metrics):
+    
+    #setup empty numpy array
+    metricas = numpy.array([])
+    
+    #compute metrics based on dict
     out_metrics = get_metrics(timeseries, metrics, show=False)
 
-    metricas = numpy.array([])
-
-    for ki, vi in out_metrics.items():
-        for ki2, vi2 in vi.items():
-            metricas = numpy.append(metricas,vi2)
-
+    #loop through dict keys and setup the array
+    for key in out_metrics.keys():
+        vals = numpy.vstack([out_metrics[key][i] for i in out_metrics[key].keys()])
+        
+        #check size of intial array
+        if metricas.size == 0:
+            metricas = vals
+        else:
+            metricas = numpy.vstack((metricas, vals))
+            
     return metricas
 
 
-def sits2metrics(dataset):
+def sits2metrics(dataset, metrics = METRICS_DICT, num_cores=-1):
     """This function performs the computation of the metrics using \
     multiprocessing.
 
     :param dataset: Your time series.
     :type dataset: rasterio dataset, numpy array (ZxMxN) - Z \
     is the time series lenght or xarray.Dataset
+
+    :param metrics: dictionary with metrics list
+    :type metrics: dictionary
+ 
+    :param num_cores: Number of cores to be used. \
+    Value -1 means all cores available.
+    :type num_cores: integer \
 
     :returns image: Numpy matrix of metrics or xarray.Dataset \
     with the metrics as an dataset.
@@ -73,41 +83,52 @@ def sits2metrics(dataset):
     
     if isinstance(dataset, rasterio.io.DatasetReader):
         image = dataset.read()
-        return _sits2metrics(image)
+        return _sits2metrics(image, metrics, num_cores)
     elif isinstance(dataset, numpy.ndarray):
         image = dataset.copy()
-        return _sits2metrics(image)
+        return _sits2metrics(image, metrics, num_cores)
     elif isinstance(dataset, xarray.Dataset):
-        return _compute_from_xarray(dataset)
+        return _compute_from_xarray(dataset, metrics, num_cores)
     else:
         print("Sorry we can't read this type of file.\
               Please use Rasterio, Numpy array or xarray.")
 
-def _sits2metrics(image):
+def _sits2metrics(image, metrics, num_cores):
     import multiprocessing as mp
+
     # Take our full image, ignore the Fmask band, and reshape into long \
     # 2d array (nrow * ncol, nband) for classification
     new_shape = (image.shape[1] * image.shape[2], image.shape[0])
+
     # Reshape array
     series = image[:, :, :].T.reshape(new_shape)
+
+    #check core parameter 
+    if num_cores == -1:
+        num_cores = mp.cpu_count()
+    elif num_cores == 0:
+        num_cores = 1
+
     # Initialize pool
-    pool = mp.Pool(mp.cpu_count())
+    pool = mp.Pool(num_cores)
+
     # use pool to compute metrics for each pixel
     # return a list of arrays
-    X_m = pool.map(_getmetrics, [serie for serie in series])
+    X_m = pool.starmap(_getmetrics, [(serie.astype(float), metrics) for serie in series])
     # close pool
     pool.close()
+
     # Conver list to numpy array
     metricas = numpy.vstack(X_m)
+
     # Reshape to image shape
     ma = [numpy.reshape(metricas[:, b], image[0, :, :].shape,
                         order='F') for b in range(metricas.shape[1])]
-    im_metrics = numpy.rollaxis(numpy.dstack(ma), 2)
 
-    return im_metrics
+    return numpy.rollaxis(numpy.dstack(ma), 2)
 
 
-def _compute_from_xarray(dataset):
+def _compute_from_xarray(dataset, metrics = METRICS_DICT, num_cores = -1):
     import xarray
     from . import utils
     
@@ -119,7 +140,7 @@ def _compute_from_xarray(dataset):
 
         series = numpy.squeeze(dataset[key].values)
 
-        metricas = _sits2metrics(series)
+        metricas = _sits2metrics(series, metrics, num_cores)
         
         metrics_list = utils.list_metrics()
         
