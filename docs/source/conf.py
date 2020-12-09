@@ -22,7 +22,7 @@ copyright = '2020, Brazil Data Cube'
 author = 'Brazil Data Cube'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.5.0'
+release = '0.1.6.0'
 
 master_doc = 'index'
 # -- General configuration ---------------------------------------------------

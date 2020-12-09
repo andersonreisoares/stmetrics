@@ -1,4 +1,3 @@
-import os
 import numpy
 import xarray
 import rasterio
@@ -698,7 +697,6 @@ def _extract_xray(dataset, segmentation, features, nodata):
     """This function is used to extract features from images \
     that are stored in a xarray.
     """
-    import numpy
     import pandas
     import rasterstats
     from affine import Affine
