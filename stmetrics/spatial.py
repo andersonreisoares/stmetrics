@@ -4,8 +4,9 @@ import rasterio
 from numba import njit, prange
 
 
-def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
-          output="shp"):
+def snitc(dataset, ki, m, nodata=0, scale=10000, iter=10, pattern="hexagonal",
+          output="shp", window=None, max_dist=None, max_step=None, 
+          max_diff=None, penalty=None, psi=None, pruning=False):
     """This function create spatial-temporal superpixels using a Satellite \
     Image Time Series (SITS). Version 1.4
 
@@ -14,6 +15,14 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
 
     :param k: Number or desired superpixels.
     :type k: int
+
+    :param m: Compactness value. Bigger values led to regular superpixels.
+    :type m: int
+
+    :param nodata: If you dataset contain nodata, it will be replace by \
+    this value. This value is necessary to be possible the use the \
+    DTW distance. Ideally your dataset must not contain nodata.
+    :type nodata: float
 
     :param scale: Adjust the time series, to 0-1. Necessary to distance \
     calculation.
@@ -28,6 +37,22 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
 
     :param output: Type of output to be produced. Default is shp (Shapefile).
     :type output: string
+
+    :param window: Only allow for maximal shifts from the two diagonals \
+    smaller than this number. It includes the diagonal, meaning that an \
+    Euclidean distance is obtained by setting window=1.
+
+    :param max_dist: Stop if the returned values will be larger than \
+    this value.
+
+    :param max_step: Do not allow steps larger than this value.
+
+    :param max_diff: Return infinity if length of two series is larger.
+
+    :param penalty: Penalty to add if compression or expansion is applied.
+
+    :param psi: Psi relaxation parameter (ignore start and end of matching). \
+    Useful for cyclical series.
 
     :returns segmentation: Shapefile containing superpixels produced.
 
@@ -54,7 +79,7 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
             # READ FILE
             transform = dataset.transform
             crs = dataset.crs
-            img = numpy.squeeze(dataset.values).astype(float)
+            img = numpy.squeeze(dataset.values)
         except:
             Exception('Sorry we could not read your dataset.')
     else:
@@ -63,7 +88,7 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
 
     # Normalize data
     for band in range(img.shape[0]):
-        img[numpy.isnan(img)] = 0
+        img[numpy.isnan(img)] = nodata
         img[band, :, :] = (img[band, :, :])/scale
 
     # Get image dimensions
@@ -102,10 +127,17 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
 
             # Calculate Spatio-temporal distance
             try:
-                D = distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin)
+                D = distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin, 
+                                  window=window, max_dist=max_dist,
+                                  max_step=max_step, 
+                                  max_diff=max_diff,
+                                  penalty=penalty, psi=psi)
             except:
                 print('dtaidistance package is not properly installed.')
-                D = distance(C[kk, :], subim, S, m, rmin, cmin)  # DTW regular
+                D = distance(C[kk, :], subim, S, m, rmin, cmin,
+                             window=window, max_dist=max_dist,
+                             max_step=max_step, max_diff=max_diff,
+                             penalty=penalty, psi=psi)  # DTW regular
 
             subd = d[rmin:rmax, cmin:cmax]
             subl = l[rmin:rmax, cmin:cmax]
@@ -132,26 +164,28 @@ def snitc(dataset, ki, m, scale=10000, iter=10, pattern="hexagonal",
         return labelled
 
 
-def distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin):
+def distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin,  
+                  window=None, max_dist=None, max_step=None, 
+                  max_diff=None, penalty=None, psi=None):
     """This function computes the spatial-temporal distance between \
     two pixels using the dtw distance with C implementation.
 
-    :param c_series: average time series of cluster
+    :param c_series: average time series of cluster.
     :type c_series: numpy.ndarray
 
-    :param ic: X coordinate of cluster center
+    :param ic: X coordinate of cluster center.
     :type ic: int
 
-    :param jc: Y coordinate of cluster center
+    :param jc: Y coordinate of cluster center.
     :type jc: int
 
-    :param subim: Block of image from the cluster under analysis .
+    :param subim: Block of image from the cluster under analysis.
     :type subim: int
 
     :param S: Pattern spacing value.
     :type S: int
 
-    :param m: Compactness value
+    :param m: Compactness value.
     :type m: float
 
     :param rmin: Minimum row.
@@ -159,6 +193,22 @@ def distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin):
 
     :param cmin: Minimum column.
     :type cmin: int
+
+    :param window: Only allow for maximal shifts from the two diagonals \
+    smaller than this number. It includes the diagonal, meaning that an \
+    Euclidean distance is obtained by setting window=1.
+
+    :param max_dist: Stop if the returned values will be larger than \
+    this value.
+
+    :param max_step: Do not allow steps larger than this value.
+
+    :param max_diff: Return infinity if length of two series is larger.
+
+    :param penalty: Penalty to add if compression or expansion is applied.
+
+    :param psi: Psi relaxation parameter (ignore start and end of matching).
+        Useful for cyclical series.
 
     :returns D:  numpy.ndarray distance.
     """
@@ -173,12 +223,15 @@ def distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin):
     # Tranpose matrix to allow dtw fast computation with dtaidistance
     linear = subim.transpose(1, 2, 0).reshape(subim.shape[1]*subim.shape[2],
                                               subim.shape[0])
-    merge = numpy.vstack((linear, c_series))
+    merge = numpy.vstack((linear, c_series)).astype(numpy.double)
 
     # Compute dtw distances
     c = dtw.distance_matrix_fast(merge, block=((0, merge.shape[0]),
                                  (merge.shape[0] - 1, merge.shape[0])),
-                                 compact=True, parallel=True)
+                                 compact=True, parallel=True, window=window, 
+                                 max_dist=max_dist, max_step=max_step,
+                                 max_length_diff=max_diff, penalty=penalty,
+                                 psi=psi)
     c1 = numpy.frombuffer(c)
     dc = c1.reshape(subim.shape[1], subim.shape[2])
 
@@ -194,26 +247,28 @@ def distance_fast(c_series, ic, jc, subim, S, m, rmin, cmin):
     return D
 
 
-def distance(c_series, ic, jc, subim, S, m, rmin, cmin):
+def distance(c_series, ic, jc, subim, S, m, rmin, cmin,
+             window=None, max_dist=None, max_step=None, 
+             max_diff=None, penalty=None, psi=None, pruning=False):
     """This function computes the spatial-temporal distance between \
     two pixels using the DTW distance.
 
-    :param c_series: average time series of cluster
+    :param c_series: average time series of cluster.
     :type c_series: numpy.ndarray
 
-    :param ic: X coordinate of cluster center
+    :param ic: X coordinate of cluster center.
     :type ic: int
 
-    :param jc: Y coordinate of cluster center
+    :param jc: Y coordinate of cluster center.
     :type jc: int
 
-    :param subim: Block of image from the cluster under analysis .
+    :param subim: Block of image from the cluster under analysis.
     :type subim: int
 
     :param S: Pattern spacing value.
     :type S: int
 
-    :param m: Compactness value
+    :param m: Compactness value.
     :type m: float
 
     :param rmin: Minimum row.
@@ -221,6 +276,24 @@ def distance(c_series, ic, jc, subim, S, m, rmin, cmin):
 
     :param cmin: Minimum column.
     :type cmin: int
+
+    :param window: Only allow for maximal shifts from the two diagonals \
+    smaller than this number. It includes the diagonal, meaning that an \
+    Euclidean distance is obtained by setting window=1.
+
+    :param max_dist: Stop if the returned values will be larger than \
+    this value.
+
+    :param max_step: Do not allow steps larger than this value.
+
+    :param max_diff: Return infinity if length of two series is larger.
+
+    :param penalty: Penalty to add if compression or expansion is applied.
+
+    :param psi: Psi relaxation parameter (ignore start and end of matching).
+        Useful for cyclical series.
+
+    :param use_pruning: Prune values based on Euclidean distance.
 
     :returns D: numpy.ndarray distance.
     """
@@ -268,7 +341,7 @@ def update_cluster(img, la, rows, columns, bands, k):
     :param columns: Number of columns of image.
     :type columns: int
 
-    :param bands: Number of bands (lenght of time series)
+    :param bands: Number of bands (lenght of time series).
     :type bands: int
 
     :param k: Number of superpixel.
@@ -298,7 +371,7 @@ def update_cluster(img, la, rows, columns, bands, k):
 
 
 def postprocessing(raster, S):
-    """Post processing function to enforce conectivity.
+    """Post processing function to enforce connectivity.
 
     :param raster: Labelled image.
     :type raster: numpy.ndarray
@@ -333,7 +406,7 @@ def postprocessing(raster, S):
 
 
 def write_pandas(segmentation, transform, crs):
-    """This function creates a geopandas DataFrame \
+    """This function creates a GeoPandas DataFrame \
     of the segmentation.
 
     :param segmentation: Segmentation numpy array.
@@ -384,7 +457,7 @@ def init_cluster_hex(rows, columns, ki, img, bands):
     :param img: Input image.
     :type img: numpy.ndarray
 
-    :param bands: Number of bands (lenght of time series)
+    :param bands: Number of bands (lenght of time series).
     :type bands: int
 
     :returns C: ND-array containing cluster centres information.
@@ -469,7 +542,7 @@ def init_cluster_regular(rows, columns, ki, img, bands):
     :param img: Input image.
     :type img: numpy.ndarray
 
-    :param bands: Number of bands (lenght of time series)
+    :param bands: Number of bands (lenght of time series).
     :type bands: int
 
     :returns C: ND-array containing cluster centres information.
@@ -641,7 +714,7 @@ def extract_features(dataset, segmentation,
     for each polygon: Area, Perimeter, Width, Length, Aspect Ratio ratio, \
     Symmetry, Compactness and Rectangular fit.
 
-    :param dataset: Images or path were images that compose time series are.
+    :param dataset: Images or path to images that compose time series.
     :type dataset: Rasterio, Xarray.Dataset or string
 
     :param segmentation: Spatio-temporal Segmentation.
@@ -653,7 +726,7 @@ def extract_features(dataset, segmentation,
     :param nodata: Nodata value
     :type nodata: int
 
-    :returns segmentation: Geopandas dataframe with the features.
+    :returns segmentation: GeoPandas DataFrame with the features.
     """
     import os
     import pandas
@@ -901,9 +974,9 @@ def aspect_ratio(geom):
 def symmetry(geom):
     """This function computes the symmetry of a given geometry.
 
-    Symmetry is calculated by dividing the overlapping area AO, between \
+    Symmetry is calculated by dividing the overlapping area (AO), between \
     a polygon P and its reflection across the horizontal axis by the area of \
-    the polygon P. The range of this score falls between [0,1] and a \
+    the polygon P (A_p). The range of this score falls between [0,1] and a \
     score closer to 1 indicates a more compact and regular geometry.
 
     .. math:: Symmetry = AO/A_p
@@ -932,7 +1005,7 @@ def reock_compactness(geom):
 
     .. math:: Reock = A_p/A_{MBC}
 
-    :param geom: Polygon geometry
+    :param geom: Polygon geometry.
     :type geom: shapely.geometry.Polygon
 
     :returns reock: Polygon reock compactness.
@@ -954,7 +1027,7 @@ def reock_compactness(geom):
 
 
 def rectangular_fit(geom):
-    """This functions computes the rectangular_fit of a geometry. \
+    """This function computes the rectangular fit of a geometry. \
     The rectangular fit is defined as:
 
     .. math:: RectFit = (AR - AD) / AO
@@ -983,9 +1056,9 @@ def rectangular_fit(geom):
 
 
 def width(geom):
-    """This functions computes the width of a geometry.
+    """This function computes the width of a geometry.
 
-    :param geom: Polygon geometry
+    :param geom: Polygon geometry.
     :type geom: shapely.geometry.Polygon
 
     :returns width: Polygon width.
@@ -997,9 +1070,9 @@ def width(geom):
 
 
 def length(geom):
-    """This functions computes the lenght of a geometry.
+    """This function computes the lenght of a geometry.
 
-    :param geom: Polygon geometry
+    :param geom: Polygon geometry.
     :type geom: shapely.geometry.Polygon
 
     :returns length: Polygon length.
@@ -1031,7 +1104,7 @@ def dtw_filter(dataset, kernel_size=3, window=None, max_dist=None,
 
     :param max_step: Do not allow steps larger than this value.
 
-    :param max_length_diff: Return infinity if length of two series is larger.
+    :param max_diff: Return infinity if length of two series is larger.
 
     :param penalty: Penalty to add if compression or expansion is applied.
 
@@ -1069,7 +1142,7 @@ def dtw_filter(dataset, kernel_size=3, window=None, max_dist=None,
                                            subim[:, rs, cs].astype(float),
                                            window=window, max_dist=max_dist,
                                            max_step=max_step,
-                                           max_length_diff=max_length_diff,
+                                           max_length_diff=max_diff,
                                            penalty=penalty, psi=psi,
                                            use_pruning=pruning)
                     tmp = dc + tmp
